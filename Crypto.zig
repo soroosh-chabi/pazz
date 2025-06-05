@@ -2,17 +2,17 @@ const std = @import("std");
 
 const Self = @This();
 const cipher = std.crypto.stream.chacha.ChaCha20With64BitNonce;
-Prng: std.Random = undefined,
+Prng: std.Random.DefaultPrng = undefined,
 Key: [cipher.key_length]u8 = undefined,
 
 pub fn init(key: [cipher.key_length]u8) Self {
-    var xoshiro_prng = std.Random.DefaultPrng.init(@bitCast(std.time.microTimestamp()));
-    return .{ .Prng = xoshiro_prng.random(), .Key = key };
+    const xoshiro_prng = std.Random.DefaultPrng.init(@bitCast(std.time.microTimestamp()));
+    return .{ .Prng = xoshiro_prng, .Key = key };
 }
 
-pub fn encrypt(self: Self, src: std.io.AnyReader, dst: std.io.AnyWriter) !void {
+pub fn encrypt(self: *Self, src: std.io.AnyReader, dst: std.io.AnyWriter) !void {
     var nonce: [cipher.nonce_length]u8 = undefined;
-    self.Prng.bytes(&nonce);
+    self.Prng.random().bytes(&nonce);
     try dst.writeAll(&nonce);
     try self.transform(src, dst, nonce);
 }
@@ -42,7 +42,7 @@ test "blackbox" {
     var decrypted_buffer = std.ArrayList(u8).init(std.testing.allocator);
     defer decrypted_buffer.deinit();
     const key = [1]u8{0} ** cipher.key_length;
-    const crypto = init(key);
+    var crypto = init(key);
     try crypto.encrypt(plain_buffer.reader().any(), cipher_buffer.writer().any());
     var cipher_buffer_stream = std.io.fixedBufferStream(cipher_buffer.items);
     try crypto.decrypt(cipher_buffer_stream.reader().any(), decrypted_buffer.writer().any());
