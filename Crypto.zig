@@ -2,17 +2,16 @@ const std = @import("std");
 
 const Self = @This();
 const cipher = std.crypto.stream.chacha.ChaCha20With64BitNonce;
-Prng: std.Random.DefaultPrng = undefined,
-Key: [cipher.key_length]u8 = undefined,
+prng_impl: std.Random.DefaultPrng = undefined,
+key: [cipher.key_length]u8 = undefined,
 
 pub fn init(key: [cipher.key_length]u8) Self {
-    const xoshiro_prng = std.Random.DefaultPrng.init(@bitCast(std.time.microTimestamp()));
-    return .{ .Prng = xoshiro_prng, .Key = key };
+    return .{ .prng_impl = std.Random.DefaultPrng.init(@bitCast(std.time.microTimestamp())), .key = key };
 }
 
 pub fn encrypt(self: *Self, src: std.io.AnyReader, dst: std.io.AnyWriter) !void {
     var nonce: [cipher.nonce_length]u8 = undefined;
-    self.Prng.random().bytes(&nonce);
+    self.prng_impl.random().bytes(&nonce);
     try dst.writeAll(&nonce);
     try self.transform(src, dst, nonce);
 }
@@ -30,7 +29,7 @@ fn transform(self: Self, src: std.io.AnyReader, dst: std.io.AnyWriter, nonce: [c
     var counter: u64 = 0;
     while (i == cipher.block_length) : (counter += 1) {
         i = try src.readAll(&src_buffer);
-        cipher.xor(dst_buffer[0..i], src_buffer[0..i], counter, self.Key, nonce);
+        cipher.xor(dst_buffer[0..i], src_buffer[0..i], counter, self.key, nonce);
         try dst.writeAll(dst_buffer[0..i]);
     }
 }
