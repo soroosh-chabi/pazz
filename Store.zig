@@ -20,7 +20,7 @@ pub fn deinit(self: Store) void {
     self.allocator.free(self.directory);
 }
 
-pub fn put(self: *Store, name: []const u8, password: []const u8) !void {
+pub fn put(self: Store, name: []const u8, password: []const u8) !void {
     const encrypted_password = try self.allocator.alloc(u8, password.len + Crypto.overhead);
     defer self.allocator.free(encrypted_password);
     self.crypto.encrypt(password, encrypted_password);

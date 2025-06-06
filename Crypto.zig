@@ -4,17 +4,16 @@ const Crypto = @This();
 const cipher = std.crypto.stream.chacha.ChaCha20With64BitNonce;
 pub const key_length = cipher.key_length;
 pub const overhead = cipher.nonce_length;
-prng_impl: std.Random.DefaultPrng,
 key: [key_length]u8,
 
 pub fn init(key: [key_length]u8) Crypto {
-    return .{ .prng_impl = std.Random.DefaultPrng.init(@bitCast(std.time.microTimestamp())), .key = key };
+    return .{ .key = key };
 }
 
 /// `dst` must be bigger than `src` by `overhead`
-pub fn encrypt(self: *Crypto, src: []const u8, dst: []u8) void {
+pub fn encrypt(self: Crypto, src: []const u8, dst: []u8) void {
     var nonce: [cipher.nonce_length]u8 = undefined;
-    self.prng_impl.random().bytes(&nonce);
+    std.crypto.random.bytes(&nonce);
     @memcpy(dst[0..overhead], &nonce);
     cipher.xor(dst[overhead..], src, 0, self.key, nonce);
 }
