@@ -1,49 +1,37 @@
 const std = @import("std");
 
-const Self = @This();
+const Crypto = @This();
 const cipher = std.crypto.stream.chacha.ChaCha20With64BitNonce;
-prng_impl: std.Random.DefaultPrng = undefined,
-key: [cipher.key_length]u8 = undefined,
+pub const overhead = cipher.nonce_length;
+prng_impl: std.Random.DefaultPrng,
+key: [cipher.key_length]u8,
 
-pub fn init(key: [cipher.key_length]u8) Self {
+pub fn init(key: [cipher.key_length]u8) Crypto {
     return .{ .prng_impl = std.Random.DefaultPrng.init(@bitCast(std.time.microTimestamp())), .key = key };
 }
 
-pub fn encrypt(self: *Self, src: std.io.AnyReader, dst: std.io.AnyWriter) !void {
+/// `dst` must be bigger than `src` by `overhead`
+pub fn encrypt(self: *Crypto, src: []const u8, dst: []u8) void {
     var nonce: [cipher.nonce_length]u8 = undefined;
     self.prng_impl.random().bytes(&nonce);
-    try dst.writeAll(&nonce);
-    try self.transform(src, dst, nonce);
+    @memcpy(dst[0..overhead], &nonce);
+    cipher.xor(dst[overhead..], src, 0, self.key, nonce);
 }
 
-pub fn decrypt(self: Self, src: std.io.AnyReader, dst: std.io.AnyWriter) !void {
+/// `src` must be bigger than `dst` by `overhead`
+pub fn decrypt(self: Crypto, src: []const u8, dst: []u8) void {
     var nonce: [cipher.nonce_length]u8 = undefined;
-    try src.readNoEof(&nonce);
-    try self.transform(src, dst, nonce);
-}
-
-fn transform(self: Self, src: std.io.AnyReader, dst: std.io.AnyWriter, nonce: [cipher.nonce_length]u8) !void {
-    var src_buffer: [cipher.block_length]u8 = undefined;
-    var dst_buffer: [cipher.block_length]u8 = undefined;
-    var i: usize = cipher.block_length;
-    var counter: u64 = 0;
-    while (i == cipher.block_length) : (counter += 1) {
-        i = try src.readAll(&src_buffer);
-        cipher.xor(dst_buffer[0..i], src_buffer[0..i], counter, self.key, nonce);
-        try dst.writeAll(dst_buffer[0..i]);
-    }
+    @memcpy(&nonce, src[0..overhead]);
+    cipher.xor(dst, src[overhead..], 0, self.key, nonce);
 }
 
 test "blackbox" {
-    var plain_buffer = std.io.fixedBufferStream("hello" ** 60);
-    var cipher_buffer = std.ArrayList(u8).init(std.testing.allocator);
-    defer cipher_buffer.deinit();
-    var decrypted_buffer = std.ArrayList(u8).init(std.testing.allocator);
-    defer decrypted_buffer.deinit();
+    const plain_buffer = "hello" ** 60;
+    var cipher_buffer: [plain_buffer.len + overhead]u8 = undefined;
+    var decrypted_buffer: [plain_buffer.len]u8 = undefined;
     const key = [1]u8{0} ** cipher.key_length;
     var crypto = init(key);
-    try crypto.encrypt(plain_buffer.reader().any(), cipher_buffer.writer().any());
-    var cipher_buffer_stream = std.io.fixedBufferStream(cipher_buffer.items);
-    try crypto.decrypt(cipher_buffer_stream.reader().any(), decrypted_buffer.writer().any());
-    try std.testing.expectEqualStrings(plain_buffer.buffer, decrypted_buffer.items);
+    crypto.encrypt(plain_buffer, &cipher_buffer);
+    crypto.decrypt(&cipher_buffer, &decrypted_buffer);
+    try std.testing.expectEqualStrings(plain_buffer, &decrypted_buffer);
 }
