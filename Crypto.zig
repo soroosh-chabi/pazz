@@ -2,11 +2,12 @@ const std = @import("std");
 
 const Crypto = @This();
 const cipher = std.crypto.stream.chacha.ChaCha20With64BitNonce;
+pub const key_length = cipher.key_length;
 pub const overhead = cipher.nonce_length;
 prng_impl: std.Random.DefaultPrng,
-key: [cipher.key_length]u8,
+key: [key_length]u8,
 
-pub fn init(key: [cipher.key_length]u8) Crypto {
+pub fn init(key: [key_length]u8) Crypto {
     return .{ .prng_impl = std.Random.DefaultPrng.init(@bitCast(std.time.microTimestamp())), .key = key };
 }
 
@@ -27,9 +28,9 @@ pub fn decrypt(self: Crypto, src: []const u8, dst: []u8) void {
 
 test "blackbox" {
     const plain_buffer = "hello" ** 60;
-    var cipher_buffer: [plain_buffer.len + overhead]u8 = undefined;
+    var cipher_buffer: [plain_buffer.len + Crypto.overhead]u8 = undefined;
     var decrypted_buffer: [plain_buffer.len]u8 = undefined;
-    const key = [1]u8{0} ** cipher.key_length;
+    const key = [1]u8{0} ** Crypto.key_length;
     var crypto = init(key);
     crypto.encrypt(plain_buffer, &cipher_buffer);
     crypto.decrypt(&cipher_buffer, &decrypted_buffer);
