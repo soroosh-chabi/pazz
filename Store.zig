@@ -1,7 +1,10 @@
 const std = @import("std");
 
 const Store = @This();
-const max_item_size: usize = 1_000_000;
+pub const StoreError = error{
+    ItemTooLarge,
+};
+max_item_size: usize = 1_000_000,
 allocator: std.mem.Allocator,
 directory: []const u8,
 
@@ -17,7 +20,11 @@ pub fn deinit(self: Store) void {
     self.allocator.free(self.directory);
 }
 
+/// Returns `StoreError.ItemTooLarge` error if item is longer than `max_item_size`.
 pub fn put(self: Store, name: []const u8, item: []const u8) !void {
+    if (item.len > self.max_item_size) {
+        return StoreError.ItemTooLarge;
+    }
     const path = try std.fs.path.join(self.allocator, &[_][]const u8{ self.directory, name });
     defer self.allocator.free(path);
     const file = try std.fs.createFileAbsolute(path, .{});
@@ -25,7 +32,7 @@ pub fn put(self: Store, name: []const u8, item: []const u8) !void {
     try file.writeAll(item);
 }
 
-/// The returned item is owned by the caller.
+/// The returned item is owned by the caller. Returns `StoreError.ItemTooLarge` error if item is longer than `max_item_size`.
 pub fn get(self: Store, allocator: std.mem.Allocator, name: []const u8) !?[]u8 {
     const path = try std.fs.path.join(self.allocator, &[_][]const u8{ self.directory, name });
     defer self.allocator.free(path);
@@ -37,7 +44,11 @@ pub fn get(self: Store, allocator: std.mem.Allocator, name: []const u8) !?[]u8 {
         }
     };
     defer file.close();
-    return try file.readToEndAlloc(allocator, max_item_size);
+    if (file.readToEndAlloc(allocator, self.max_item_size)) |item| {
+        return item;
+    } else |err| {
+        return if (err == error.FileTooBig) StoreError.ItemTooLarge else err;
+    }
 }
 
 pub fn remove(self: Store, name: []const u8) !void {
@@ -91,4 +102,17 @@ test "put then remove then get" {
     try store.put(name, item);
     try store.remove(name);
     try std.testing.expect(try store.get(std.testing.allocator, name) == null);
+}
+
+test "item too large" {
+    var store = try setupTest();
+    defer store.deinit();
+    const item = "long item";
+    store.max_item_size = item.len - 1;
+    const name = "site";
+    try std.testing.expectError(StoreError.ItemTooLarge, store.put(name, item));
+    store.max_item_size = item.len;
+    try store.put(name, item);
+    store.max_item_size = item.len - 1;
+    try std.testing.expectError(StoreError.ItemTooLarge, store.get(std.testing.allocator, name));
 }
