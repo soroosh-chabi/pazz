@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const Store = @This();
-const max_password_size: usize = 1_000_000;
+const max_item_size: usize = 1_000_000;
 allocator: std.mem.Allocator,
 directory: []const u8,
 
@@ -17,15 +17,15 @@ pub fn deinit(self: Store) void {
     self.allocator.free(self.directory);
 }
 
-pub fn put(self: Store, name: []const u8, password: []const u8) !void {
+pub fn put(self: Store, name: []const u8, item: []const u8) !void {
     const path = try std.fs.path.join(self.allocator, &[_][]const u8{ self.directory, name });
     defer self.allocator.free(path);
     const file = try std.fs.createFileAbsolute(path, .{});
     defer file.close();
-    try file.writeAll(password);
+    try file.writeAll(item);
 }
 
-/// The returned password is owned by the caller.
+/// The returned item is owned by the caller.
 pub fn get(self: Store, allocator: std.mem.Allocator, name: []const u8) !?[]u8 {
     const path = try std.fs.path.join(self.allocator, &[_][]const u8{ self.directory, name });
     defer self.allocator.free(path);
@@ -37,7 +37,7 @@ pub fn get(self: Store, allocator: std.mem.Allocator, name: []const u8) !?[]u8 {
         }
     };
     defer file.close();
-    return try file.readToEndAlloc(allocator, max_password_size);
+    return try file.readToEndAlloc(allocator, max_item_size);
 }
 
 pub fn remove(self: Store, name: []const u8) !void {
@@ -58,11 +58,11 @@ test "put then get" {
     var store = try setupTest();
     defer store.deinit();
     const name = "site";
-    const password = "pass";
-    try store.put(name, password);
-    const retrieved_password = (try store.get(std.testing.allocator, name)).?;
-    defer std.testing.allocator.free(retrieved_password);
-    try std.testing.expectEqualStrings(password, retrieved_password);
+    const item = "pass";
+    try store.put(name, item);
+    const retrieved_item = (try store.get(std.testing.allocator, name)).?;
+    defer std.testing.allocator.free(retrieved_item);
+    try std.testing.expectEqualStrings(item, retrieved_item);
 }
 
 test "get non-existent" {
@@ -75,20 +75,20 @@ test "overwrite" {
     var store = try setupTest();
     defer store.deinit();
     const name = "site";
-    const password = "pass2";
+    const item = "pass2";
     try store.put(name, "pass1");
-    try store.put(name, password);
-    const retrieved_password = (try store.get(std.testing.allocator, name)).?;
-    defer std.testing.allocator.free(retrieved_password);
-    try std.testing.expectEqualStrings(password, retrieved_password);
+    try store.put(name, item);
+    const retrieved_item = (try store.get(std.testing.allocator, name)).?;
+    defer std.testing.allocator.free(retrieved_item);
+    try std.testing.expectEqualStrings(item, retrieved_item);
 }
 
 test "put then remove then get" {
     var store = try setupTest();
     defer store.deinit();
     const name = "site";
-    const password = "pass";
-    try store.put(name, password);
+    const item = "pass";
+    try store.put(name, item);
     try store.remove(name);
     try std.testing.expect(try store.get(std.testing.allocator, name) == null);
 }
