@@ -1,6 +1,5 @@
 const std = @import("std");
 
-const Store = @This();
 pub const StoreError = error{
     ItemTooLarge,
 };
@@ -9,19 +8,19 @@ allocator: std.mem.Allocator,
 directory: []const u8,
 
 /// `directory` must be absolute.
-pub fn init(allocator: std.mem.Allocator, directory: []const u8) !Store {
+pub fn init(allocator: std.mem.Allocator, directory: []const u8) !@This() {
     return .{
         .allocator = allocator,
         .directory = try allocator.dupe(u8, directory),
     };
 }
 
-pub fn deinit(self: Store) void {
+pub fn deinit(self: @This()) void {
     self.allocator.free(self.directory);
 }
 
 /// Returns `StoreError.ItemTooLarge` error if item is longer than `max_item_size`.
-pub fn put(self: Store, name: []const u8, item: []const u8) !void {
+pub fn put(self: @This(), name: []const u8, item: []const u8) !void {
     if (item.len > self.max_item_size) {
         return StoreError.ItemTooLarge;
     }
@@ -33,7 +32,7 @@ pub fn put(self: Store, name: []const u8, item: []const u8) !void {
 }
 
 /// The returned item is owned by the caller. Returns `StoreError.ItemTooLarge` error if item is longer than `max_item_size`.
-pub fn get(self: Store, allocator: std.mem.Allocator, name: []const u8) !?[]u8 {
+pub fn get(self: @This(), allocator: std.mem.Allocator, name: []const u8) !?[]u8 {
     const path = try std.fs.path.join(self.allocator, &[_][]const u8{ self.directory, name });
     defer self.allocator.free(path);
     const file = blk: {
@@ -51,13 +50,13 @@ pub fn get(self: Store, allocator: std.mem.Allocator, name: []const u8) !?[]u8 {
     }
 }
 
-pub fn remove(self: Store, name: []const u8) !void {
+pub fn remove(self: @This(), name: []const u8) !void {
     const path = try std.fs.path.join(self.allocator, &[_][]const u8{ self.directory, name });
     defer self.allocator.free(path);
     try std.fs.deleteFileAbsolute(path);
 }
 
-fn setupTest() !Store {
+fn setupTest() !@This() {
     const path = try std.fs.cwd().realpathAlloc(std.testing.allocator, "store");
     defer std.testing.allocator.free(path);
     try std.fs.deleteTreeAbsolute(path);
