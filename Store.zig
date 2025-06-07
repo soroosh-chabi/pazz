@@ -1,17 +1,14 @@
 const std = @import("std");
-const Crypto = @import("Crypto.zig");
 
 const Store = @This();
 const max_password_size: usize = 1_000_000;
 allocator: std.mem.Allocator,
-crypto: Crypto,
 directory: []const u8,
 
-/// `directory` must be absolute. It stores a copy.
-pub fn init(allocator: std.mem.Allocator, crypto: Crypto, directory: []const u8) !Store {
+/// `directory` must be absolute.
+pub fn init(allocator: std.mem.Allocator, directory: []const u8) !Store {
     return .{
         .allocator = allocator,
-        .crypto = crypto,
         .directory = try allocator.dupe(u8, directory),
     };
 }
@@ -21,14 +18,11 @@ pub fn deinit(self: Store) void {
 }
 
 pub fn put(self: Store, name: []const u8, password: []const u8) !void {
-    const encrypted_password = try self.allocator.alloc(u8, password.len + Crypto.overhead);
-    defer self.allocator.free(encrypted_password);
-    self.crypto.encrypt(password, encrypted_password);
     const path = try std.fs.path.join(self.allocator, &[_][]const u8{ self.directory, name });
     defer self.allocator.free(path);
     const file = try std.fs.createFileAbsolute(path, .{});
     defer file.close();
-    try file.writeAll(encrypted_password);
+    try file.writeAll(password);
 }
 
 /// The returned password is owned by the caller.
@@ -43,11 +37,7 @@ pub fn get(self: Store, allocator: std.mem.Allocator, name: []const u8) !?[]u8 {
         }
     };
     defer file.close();
-    const encrypted_password = try file.readToEndAlloc(self.allocator, max_password_size);
-    defer self.allocator.free(encrypted_password);
-    const password = try allocator.alloc(u8, encrypted_password.len - Crypto.overhead);
-    self.crypto.decrypt(encrypted_password, password);
-    return password;
+    return try file.readToEndAlloc(allocator, max_password_size);
 }
 
 pub fn remove(self: Store, name: []const u8) !void {
@@ -61,7 +51,7 @@ fn setupTest() !Store {
     defer std.testing.allocator.free(path);
     try std.fs.deleteTreeAbsolute(path);
     try std.fs.makeDirAbsolute(path);
-    return init(std.testing.allocator, Crypto.init([1]u8{0} ** Crypto.key_length), path);
+    return init(std.testing.allocator, path);
 }
 
 test "put then get" {
