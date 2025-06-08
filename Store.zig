@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const Store = @This();
+
 pub const StoreError = error{
     ItemTooLarge,
 };
@@ -8,24 +10,24 @@ allocator: std.mem.Allocator,
 directory: []const u8,
 
 /// `directory` must be absolute.
-pub fn init(allocator: std.mem.Allocator, directory: []const u8) !@This() {
+pub fn init(allocator: std.mem.Allocator, directory: []const u8) !Store {
     return .{
         .allocator = allocator,
         .directory = try allocator.dupe(u8, directory),
     };
 }
 
-pub fn deinit(self: @This()) void {
+pub fn deinit(self: Store) void {
     self.allocator.free(self.directory);
 }
 
 /// The caller owns the returned value
-fn pathFor(self: @This(), name: []const u8) ![]u8 {
+fn pathFor(self: Store, name: []const u8) ![]u8 {
     return try std.fs.path.join(self.allocator, &[_][]const u8{ self.directory, name });
 }
 
 /// Returns `StoreError.ItemTooLarge` error if item is longer than `max_item_size`.
-pub fn put(self: @This(), name: []const u8, item: []const u8) !void {
+pub fn put(self: Store, name: []const u8, item: []const u8) !void {
     if (item.len > self.max_item_size) {
         return StoreError.ItemTooLarge;
     }
@@ -37,7 +39,7 @@ pub fn put(self: @This(), name: []const u8, item: []const u8) !void {
 }
 
 /// The returned item is owned by the caller. Returns `StoreError.ItemTooLarge` error if item is longer than `max_item_size`.
-pub fn getAlloc(self: @This(), allocator: std.mem.Allocator, name: []const u8) !?[]u8 {
+pub fn getAlloc(self: Store, allocator: std.mem.Allocator, name: []const u8) !?[]u8 {
     const file = try self.openFileForGet(name) orelse return null;
     defer file.close();
     if (file.readToEndAlloc(allocator, self.max_item_size)) |item| {
@@ -47,13 +49,13 @@ pub fn getAlloc(self: @This(), allocator: std.mem.Allocator, name: []const u8) !
     }
 }
 
-pub fn get(self: @This(), name: []const u8, item: []u8) !?usize {
+pub fn get(self: Store, name: []const u8, item: []u8) !?usize {
     const file = try self.openFileForGet(name) orelse return null;
     defer file.close();
     return try file.readAll(item);
 }
 
-fn openFileForGet(self: @This(), name: []const u8) !?std.fs.File {
+fn openFileForGet(self: Store, name: []const u8) !?std.fs.File {
     const path = try self.pathFor(name);
     defer self.allocator.free(path);
     if (std.fs.openFileAbsolute(path, .{})) |f| {
@@ -63,13 +65,13 @@ fn openFileForGet(self: @This(), name: []const u8) !?std.fs.File {
     }
 }
 
-pub fn remove(self: @This(), name: []const u8) !void {
+pub fn remove(self: Store, name: []const u8) !void {
     const path = try self.pathFor(name);
     defer self.allocator.free(path);
     try std.fs.deleteFileAbsolute(path);
 }
 
-pub fn exists(self: @This(), name: []const u8) !bool {
+pub fn exists(self: Store, name: []const u8) !bool {
     const path = try self.pathFor(name);
     defer self.allocator.free(path);
     if (std.fs.accessAbsolute(path, .{})) |_| {
@@ -79,67 +81,57 @@ pub fn exists(self: @This(), name: []const u8) !bool {
     }
 }
 
-pub fn setupTest() !@This() {
+test Store {
     const path = try std.fs.cwd().realpathAlloc(std.testing.allocator, "store");
     defer std.testing.allocator.free(path);
     try std.fs.deleteTreeAbsolute(path);
     try std.fs.makeDirAbsolute(path);
-    return init(std.testing.allocator, path);
-}
-
-test "put then get and exists" {
-    var store = try setupTest();
+    var store = try init(std.testing.allocator, path);
     defer store.deinit();
-    const name = "site";
-    const item = "pass";
-    try store.put(name, item);
-    const retrieved_item_alloc = (try store.getAlloc(std.testing.allocator, name)).?;
-    defer std.testing.allocator.free(retrieved_item_alloc);
-    try std.testing.expectEqualStrings(item, retrieved_item_alloc);
-    var retrieved_item: [item.len]u8 = undefined;
-    try std.testing.expectEqual(item.len, (try store.get(name, &retrieved_item)).?);
-    try std.testing.expectEqualStrings(item, &retrieved_item);
-    try std.testing.expect(try store.exists(name));
-}
-
-test "non-existent" {
-    var store = try setupTest();
-    defer store.deinit();
-    try std.testing.expect(try store.getAlloc(std.testing.allocator, "site") == null);
-    try std.testing.expect(!try store.exists("site"));
-}
-
-test "overwrite" {
-    var store = try setupTest();
-    defer store.deinit();
-    const name = "site";
-    const item = "pass2";
-    try store.put(name, "pass1");
-    try store.put(name, item);
-    const retrieved_item = (try store.getAlloc(std.testing.allocator, name)).?;
-    defer std.testing.allocator.free(retrieved_item);
-    try std.testing.expectEqualStrings(item, retrieved_item);
-}
-
-test "put then remove then get" {
-    var store = try setupTest();
-    defer store.deinit();
-    const name = "site";
-    const item = "pass";
-    try store.put(name, item);
-    try store.remove(name);
-    try std.testing.expect(try store.getAlloc(std.testing.allocator, name) == null);
-}
-
-test "item too large" {
-    var store = try setupTest();
-    defer store.deinit();
-    const item = "long item";
-    store.max_item_size = item.len - 1;
-    const name = "site";
-    try std.testing.expectError(StoreError.ItemTooLarge, store.put(name, item));
-    store.max_item_size = item.len;
-    try store.put(name, item);
-    store.max_item_size = item.len - 1;
-    try std.testing.expectError(StoreError.ItemTooLarge, store.getAlloc(std.testing.allocator, name));
+    {
+        const name = "name1";
+        const item = "item1";
+        {
+            try std.testing.expect(try store.getAlloc(std.testing.allocator, name) == null);
+            try std.testing.expectEqual(null, try store.get(name, &[0]u8{}));
+            try std.testing.expect(!try store.exists(name));
+        }
+        try store.put(name, item);
+        {
+            try std.testing.expect(try store.exists(name));
+        }
+        {
+            const retrieved_item_alloc = (try store.getAlloc(std.testing.allocator, name)).?;
+            defer std.testing.allocator.free(retrieved_item_alloc);
+            try std.testing.expectEqualStrings(item, retrieved_item_alloc);
+        }
+        {
+            var retrieved_item: [item.len]u8 = undefined;
+            try std.testing.expectEqual(item.len, (try store.get(name, &retrieved_item)).?);
+            try std.testing.expectEqualStrings(item, &retrieved_item);
+        }
+        {
+            const item2 = "item2";
+            try store.put(name, item2);
+            const retrieved_item = (try store.getAlloc(std.testing.allocator, name)).?;
+            defer std.testing.allocator.free(retrieved_item);
+            try std.testing.expectEqualStrings(item2, retrieved_item);
+        }
+        {
+            try store.remove(name);
+            try std.testing.expect(try store.getAlloc(std.testing.allocator, name) == null);
+            try std.testing.expectEqual(null, try store.get(name, &[0]u8{}));
+            try std.testing.expect(!try store.exists(name));
+        }
+    }
+    {
+        const item = "long item";
+        store.max_item_size = item.len - 1;
+        const name = "name";
+        try std.testing.expectError(StoreError.ItemTooLarge, store.put(name, item));
+        store.max_item_size = item.len;
+        try store.put(name, item);
+        store.max_item_size = item.len - 1;
+        try std.testing.expectError(StoreError.ItemTooLarge, store.getAlloc(std.testing.allocator, name));
+    }
 }
