@@ -69,7 +69,17 @@ pub fn remove(self: @This(), name: []const u8) !void {
     try std.fs.deleteFileAbsolute(path);
 }
 
-fn setupTest() !@This() {
+pub fn exists(self: @This(), name: []const u8) !bool {
+    const path = try self.pathFor(name);
+    defer self.allocator.free(path);
+    if (std.fs.accessAbsolute(path, .{})) |_| {
+        return true;
+    } else |err| {
+        return if (err == std.fs.Dir.AccessError.FileNotFound) false else err;
+    }
+}
+
+pub fn setupTest() !@This() {
     const path = try std.fs.cwd().realpathAlloc(std.testing.allocator, "store");
     defer std.testing.allocator.free(path);
     try std.fs.deleteTreeAbsolute(path);
@@ -77,7 +87,7 @@ fn setupTest() !@This() {
     return init(std.testing.allocator, path);
 }
 
-test "put then get" {
+test "put then get and exists" {
     var store = try setupTest();
     defer store.deinit();
     const name = "site";
@@ -89,12 +99,14 @@ test "put then get" {
     var retrieved_item: [item.len]u8 = undefined;
     try std.testing.expectEqual(item.len, (try store.get(name, &retrieved_item)).?);
     try std.testing.expectEqualStrings(item, &retrieved_item);
+    try std.testing.expect(try store.exists(name));
 }
 
-test "get non-existent" {
+test "non-existent" {
     var store = try setupTest();
     defer store.deinit();
     try std.testing.expect(try store.getAlloc(std.testing.allocator, "site") == null);
+    try std.testing.expect(!try store.exists("site"));
 }
 
 test "overwrite" {
