@@ -9,16 +9,12 @@ max_item_size: usize = 1_000_000,
 allocator: std.mem.Allocator,
 directory: []const u8,
 
-/// `directory` must be absolute.
-pub fn init(allocator: std.mem.Allocator, directory: []const u8) !Store {
+/// `directory` must be absolute and should not be released as long as the returned object is around.
+pub fn init(allocator: std.mem.Allocator, directory: []const u8) Store {
     return .{
         .allocator = allocator,
-        .directory = try allocator.dupe(u8, directory),
+        .directory = directory,
     };
-}
-
-pub fn deinit(self: Store) void {
-    self.allocator.free(self.directory);
 }
 
 /// The caller owns the returned value
@@ -86,8 +82,7 @@ test Store {
     defer std.testing.allocator.free(path);
     try std.fs.deleteTreeAbsolute(path);
     try std.fs.makeDirAbsolute(path);
-    var store = try init(std.testing.allocator, path);
-    defer store.deinit();
+    var store = init(std.testing.allocator, path);
     {
         const name = "name1";
         const item = "item1";
