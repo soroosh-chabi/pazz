@@ -7,15 +7,8 @@ pub const StoreError = error{
 };
 max_item_size: usize = 1_000_000,
 allocator: std.mem.Allocator,
-directory: []const u8,
-
 /// `directory` must be absolute and should not be released as long as the returned object is around.
-pub fn init(allocator: std.mem.Allocator, directory: []const u8) Store {
-    return .{
-        .allocator = allocator,
-        .directory = directory,
-    };
-}
+directory: []const u8,
 
 /// The caller owns the returned value
 fn pathFor(self: Store, name: []const u8) ![]u8 {
@@ -82,7 +75,7 @@ test Store {
     defer std.testing.allocator.free(path);
     try std.fs.deleteTreeAbsolute(path);
     try std.fs.makeDirAbsolute(path);
-    var store = init(std.testing.allocator, path);
+    var store = Store{ .allocator = std.testing.allocator, .directory = path };
     {
         const name = "name1";
         const item = "item1";
