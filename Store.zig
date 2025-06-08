@@ -71,10 +71,10 @@ pub fn exists(self: Store, name: []const u8) !bool {
 }
 
 test Store {
-    const path = try std.fs.cwd().realpathAlloc(std.testing.allocator, "store");
+    var tmpDir = std.testing.tmpDir(.{});
+    defer tmpDir.cleanup();
+    const path = try tmpDir.dir.realpathAlloc(std.testing.allocator, ".");
     defer std.testing.allocator.free(path);
-    try std.fs.deleteTreeAbsolute(path);
-    try std.fs.makeDirAbsolute(path);
     var store = Store{ .allocator = std.testing.allocator, .directory = path };
     {
         const name = "name1";
