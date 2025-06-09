@@ -76,6 +76,39 @@ test EncryptedStore {
     try std.testing.expect(!try enc_store.initialized());
     try enc_store.initialize(password);
     try std.testing.expect(try enc_store.initialized());
-    try std.testing.expectError(Encryption.KeyLoadError.WrongPassword, enc_store.unlock(password ** 2));
-    try enc_store.unlock(password);
+    {
+        var unlocking_enc_store = EncryptedStore{ .store = .{ .directory = tmpDir.dir } };
+        try std.testing.expectError(Encryption.KeyLoadError.WrongPassword, unlocking_enc_store.unlock(password ** 2));
+        try unlocking_enc_store.unlock(password);
+
+        const name = "name";
+        const item = "item";
+        try std.testing.expect(!try enc_store.exists(name));
+        try std.testing.expectEqual(null, try enc_store.get(std.testing.allocator, name));
+        try std.testing.expect(!try unlocking_enc_store.exists(name));
+        try enc_store.put(std.testing.allocator, name, item);
+        try std.testing.expect(try enc_store.exists(name));
+        try std.testing.expect(try unlocking_enc_store.exists(name));
+        const retrieved_item = (try enc_store.get(std.testing.allocator, name)).?;
+        defer std.testing.allocator.free(retrieved_item);
+        try std.testing.expectEqualStrings(item, retrieved_item);
+        const unlocking_retrieved_item = (try unlocking_enc_store.get(std.testing.allocator, name)).?;
+        defer std.testing.allocator.free(unlocking_retrieved_item);
+        try std.testing.expectEqualStrings(item, unlocking_retrieved_item);
+        try enc_store.remove(name);
+        try std.testing.expect(!try enc_store.exists(name));
+        try std.testing.expect(!try unlocking_enc_store.exists(name));
+    }
+    {
+        try std.testing.expectError(
+            EncryptedStoreError.ForbiddenName,
+            enc_store.get(std.testing.allocator, key_metadata_name),
+        );
+        try std.testing.expectError(
+            EncryptedStoreError.ForbiddenName,
+            enc_store.put(std.testing.allocator, key_metadata_name, ""),
+        );
+        try std.testing.expectError(EncryptedStoreError.ForbiddenName, enc_store.remove(key_metadata_name));
+        try std.testing.expectError(EncryptedStoreError.ForbiddenName, enc_store.exists(key_metadata_name));
+    }
 }
