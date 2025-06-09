@@ -4,9 +4,7 @@ const Encryption = @import("Encryption.zig");
 
 const EncryptedStore = @This();
 
-const EncryptedStoreError = error{
-    ForbiddenName,
-};
+const ForbiddenName = error.ForbiddenName;
 const key_metadata_name = ".key";
 
 enc: Encryption = .{},
@@ -36,7 +34,7 @@ pub fn unlock(self: *EncryptedStore, password: []const u8) !void {
 
 fn validateName(name: []const u8) !void {
     if (std.mem.eql(u8, key_metadata_name, name)) {
-        return EncryptedStoreError.ForbiddenName;
+        return ForbiddenName;
     }
 }
 
@@ -78,7 +76,7 @@ test EncryptedStore {
     try std.testing.expect(try enc_store.initialized());
     {
         var unlocking_enc_store = EncryptedStore{ .store = .{ .directory = tmpDir.dir } };
-        try std.testing.expectError(Encryption.KeyLoadError.WrongPassword, unlocking_enc_store.unlock(password ** 2));
+        try std.testing.expectError(error.WrongPassword, unlocking_enc_store.unlock(password ** 2));
         try unlocking_enc_store.unlock(password);
 
         const name = "name";
@@ -100,15 +98,9 @@ test EncryptedStore {
         try std.testing.expect(!try unlocking_enc_store.exists(name));
     }
     {
-        try std.testing.expectError(
-            EncryptedStoreError.ForbiddenName,
-            enc_store.get(std.testing.allocator, key_metadata_name),
-        );
-        try std.testing.expectError(
-            EncryptedStoreError.ForbiddenName,
-            enc_store.put(std.testing.allocator, key_metadata_name, ""),
-        );
-        try std.testing.expectError(EncryptedStoreError.ForbiddenName, enc_store.remove(key_metadata_name));
-        try std.testing.expectError(EncryptedStoreError.ForbiddenName, enc_store.exists(key_metadata_name));
+        try std.testing.expectError(ForbiddenName, enc_store.get(std.testing.allocator, key_metadata_name));
+        try std.testing.expectError(ForbiddenName, enc_store.put(std.testing.allocator, key_metadata_name, ""));
+        try std.testing.expectError(ForbiddenName, enc_store.remove(key_metadata_name));
+        try std.testing.expectError(ForbiddenName, enc_store.exists(key_metadata_name));
     }
 }

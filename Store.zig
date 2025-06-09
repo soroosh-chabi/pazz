@@ -2,30 +2,28 @@ const std = @import("std");
 
 const Store = @This();
 
-pub const StoreError = error{
-    ItemTooLarge,
-};
+const ItemTooLarge = error.ItemTooLarge;
 max_item_size: usize = 1_000_000,
 directory: std.fs.Dir,
 
-/// Returns `StoreError.ItemTooLarge` error if item is longer than `max_item_size`.
+/// Returns `ItemTooLarge` error if item is longer than `max_item_size`.
 pub fn put(self: Store, name: []const u8, item: []const u8) !void {
     if (item.len > self.max_item_size) {
-        return StoreError.ItemTooLarge;
+        return ItemTooLarge;
     }
     const file = try self.directory.createFile(name, .{});
     defer file.close();
     try file.writeAll(item);
 }
 
-/// The returned item is owned by the caller. Returns `StoreError.ItemTooLarge` error if item is longer than `max_item_size`.
+/// The returned item is owned by the caller. Returns `ItemTooLarge` error if item is longer than `max_item_size`.
 pub fn getAlloc(self: Store, allocator: std.mem.Allocator, name: []const u8) !?[]u8 {
     const file = try self.openFileForGet(name) orelse return null;
     defer file.close();
     if (file.readToEndAlloc(allocator, self.max_item_size)) |item| {
         return item;
     } else |err| {
-        return if (err == error.FileTooBig) StoreError.ItemTooLarge else err;
+        return if (err == error.FileTooBig) ItemTooLarge else err;
     }
 }
 
@@ -99,10 +97,10 @@ test Store {
         const item = "long item";
         store.max_item_size = item.len - 1;
         const name = "name";
-        try std.testing.expectError(StoreError.ItemTooLarge, store.put(name, item));
+        try std.testing.expectError(ItemTooLarge, store.put(name, item));
         store.max_item_size = item.len;
         try store.put(name, item);
         store.max_item_size = item.len - 1;
-        try std.testing.expectError(StoreError.ItemTooLarge, store.getAlloc(std.testing.allocator, name));
+        try std.testing.expectError(ItemTooLarge, store.getAlloc(std.testing.allocator, name));
     }
 }

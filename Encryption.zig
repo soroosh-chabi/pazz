@@ -4,9 +4,7 @@ const Encryption = @This();
 
 pub const overhead = cipher.nonce_length;
 pub const key_metadata_length = salt_length + overhead + correct_password.len;
-pub const KeyLoadError = error{
-    WrongPassword,
-};
+const WrongPassword = error.WrongPassword;
 const cipher = std.crypto.stream.chacha.ChaCha20With64BitNonce;
 const correct_password = "correct password";
 const salt_length = 64;
@@ -27,12 +25,12 @@ pub fn decrypt(self: Encryption, src: []const u8, dst: []u8) void {
     cipher.xor(dst, src[overhead..], 0, self.key, nonce);
 }
 
-pub fn loadKeyMetadata(self: *Encryption, password: []const u8, key_metadata: [key_metadata_length]u8) KeyLoadError!void {
+pub fn loadKeyMetadata(self: *Encryption, password: []const u8, key_metadata: [key_metadata_length]u8) error{WrongPassword}!void {
     self.setKey(password, key_metadata[0..salt_length]);
     var decrypted_metadata: [correct_password.len]u8 = undefined;
     self.decrypt(key_metadata[salt_length..], &decrypted_metadata);
     if (!std.mem.eql(u8, &decrypted_metadata, correct_password)) {
-        return KeyLoadError.WrongPassword;
+        return WrongPassword;
     }
 }
 
@@ -73,6 +71,6 @@ test Encryption {
     }
     {
         var enc_load = Encryption{};
-        try std.testing.expectError(KeyLoadError.WrongPassword, enc_load.loadKeyMetadata("catty", key_metadata));
+        try std.testing.expectError(WrongPassword, enc_load.loadKeyMetadata("catty", key_metadata));
     }
 }
