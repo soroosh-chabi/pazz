@@ -53,3 +53,55 @@ pub const Operation = struct {
         };
     }
 };
+
+pub fn readPassword(allocator: std.mem.Allocator) ![]const u8 {
+    const stdin = std.io.getStdIn().reader();
+    const stdout = std.io.getStdOut().writer();
+    try stdout.print("Enter password: ", .{});
+
+    // Save current terminal settings
+    var original_termios: std.os.linux.termios = undefined;
+    _ = std.os.linux.tcgetattr(std.io.getStdIn().handle, &original_termios);
+    var new_termios = original_termios;
+    new_termios.lflag.ECHO = false;
+    _ = std.os.linux.tcsetattr(std.io.getStdIn().handle, std.os.linux.TCSA.FLUSH, &new_termios);
+    defer _ = std.os.linux.tcsetattr(std.io.getStdIn().handle, std.os.linux.TCSA.FLUSH, &original_termios);
+
+    var password = std.ArrayList(u8).init(allocator);
+    defer password.deinit();
+
+    while (true) {
+        const byte = stdin.readByte() catch |err| switch (err) {
+            error.EndOfStream => break,
+            else => return err,
+        };
+        if (byte == '\n') break;
+        try password.append(byte);
+    }
+
+    try stdout.writeByte('\n');
+    return password.toOwnedSlice();
+}
+
+pub fn getStoreDir(allocator: std.mem.Allocator) !std.fs.Dir {
+    const home = std.process.getEnvVarOwned(allocator, "HOME") catch |err| {
+        std.debug.print("Error: Could not get HOME directory: {}\n", .{err});
+        return error.HomeDirNotFound;
+    };
+    defer allocator.free(home);
+
+    const store_path = try std.fs.path.join(allocator, &[_][]const u8{ home, ".pazz" });
+    defer allocator.free(store_path);
+
+    // Try to open the directory first
+    if (std.fs.openDirAbsolute(store_path, .{})) |dir| {
+        return dir;
+    } else |err| switch (err) {
+        error.FileNotFound => {
+            // Create the directory if it doesn't exist
+            try std.fs.makeDirAbsolute(store_path);
+            return try std.fs.openDirAbsolute(store_path, .{});
+        },
+        else => return err,
+    }
+}
